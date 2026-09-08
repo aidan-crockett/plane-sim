@@ -78,6 +78,7 @@ int main() {
     CameraType cameraMode = CameraType::THIRD_PERSON;
     
     float mouseWheelMomentum = 0;
+    Vector2 mouseMomentum = {0, 0};
 
     Model f16 = LoadModel("src/assets/plane.obj");
     Model enemyPlane = LoadModel("src/assets/plane.obj");
@@ -100,7 +101,7 @@ int main() {
     plane.position = {4000.0f, 300.0f, 4000.0f};
 
     Plane enemy(&enemyPlane);
-    enemy.position = {4000.0f, 300.0f, 4100.0f};
+    enemy.position = {4000.0f, 300.0f, 4500.0f};
     enemy.front = {0.0f, 0.0f, -1.0f};
     
     Mesh ringAimerMesh = GenMeshTorus(0.1, 0.5, 6, 12);
@@ -133,11 +134,13 @@ int main() {
             Vector2 mouseMovement = GetMouseDelta();
             
             if (hasGotMouseInput && (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsCursorHidden())) {
-                camAngle.x += mouseMovement.x*0.002;
-                camAngle.y -= mouseMovement.y*0.002;
+                mouseMomentum += mouseMovement * 0.3;
             }
+            camAngle.x += mouseMomentum.x*0.002;
+            camAngle.y -= mouseMomentum.y*0.002;
             camAngle.y = Clamp(camAngle.y, -3.14/2, 3.14/2);
             if (!hasGotMouseInput && (mouseMovement.x != 0 || mouseMovement.y != 0)) hasGotMouseInput = true;
+            mouseMomentum *= 0.8;
 
             mouseWheelMomentum += GetMouseWheelMove() * 0.02;
             camera.fovy = Clamp(camera.fovy * (1-mouseWheelMomentum), 10, 100);
