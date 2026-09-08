@@ -14,6 +14,10 @@
     #define GLSL_VERSION            100
 #endif
 
+#if defined(PLATFORM_WEB)
+    #include <emscripten/emscripten.h>
+#endif
+
 
 //`CameraMode` is already defined in raylib but not quite what we want
 enum CameraType {
@@ -90,7 +94,9 @@ int main() {
     RenderTexture2D target = LoadRenderTextureDepthTex(screenWidth, screenHeight);
 
     // Load depth shader and get depth texture shader location
-    Shader depthShader = LoadShader(0, TextFormat("src/depth_render.fs", GLSL_VERSION));
+    Shader depthShader;
+    if (GLSL_VERSION == 100) depthShader = LoadShader(0, TextFormat("src/assets/depth_render_100.fs", GLSL_VERSION));
+    else if (GLSL_VERSION == 330) depthShader = LoadShader(0, TextFormat("src/assets/depth_render_330.fs", GLSL_VERSION));
     int depthLoc = GetShaderLocation(depthShader, "depthTexture");
     int colorLoc = GetShaderLocation(depthShader, "colorTexture");
     
@@ -101,7 +107,7 @@ int main() {
     plane.position = {4000.0f, 300.0f, 4000.0f};
 
     Plane enemy(&enemyPlane);
-    enemy.position = {4000.0f, 300.0f, 4500.0f};
+    enemy.position = {4000.0f, 300.0f, 4100.0f};
     enemy.front = {0.0f, 0.0f, -1.0f};
     
     Mesh ringAimerMesh = GenMeshTorus(0.1, 0.5, 6, 12);
@@ -122,8 +128,9 @@ int main() {
     SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
+        
         if (!paused) {
-            if (!IsCursorHidden()) {
+            if (!IsCursorHidden() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 DisableCursor();
             }
 
@@ -133,7 +140,7 @@ int main() {
 
             Vector2 mouseMovement = GetMouseDelta();
             
-            if (hasGotMouseInput && (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsCursorHidden())) {
+            if (hasGotMouseInput && (true || IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsCursorHidden())) {
                 mouseMomentum += mouseMovement * 0.3;
             }
             camAngle.x += mouseMomentum.x*0.002;
@@ -241,7 +248,7 @@ int main() {
             }
         } else {
             if (IsCursorHidden()) {
-                ShowCursor();
+                EnableCursor();
             }
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 paused = false;
