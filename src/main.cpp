@@ -55,80 +55,34 @@ static RenderTexture2D LoadRenderTextureDepthTex(int width, int height);
 // Unload render texture from GPU memory (VRAM)
 static void UnloadRenderTextureDepthTex(RenderTexture2D target);
 
-int main() {
-    int monitor = GetCurrentMonitor();
-    int monitorWidth = GetMonitorWidth(monitor);
-    int monitorHeight = GetMonitorHeight(monitor);
+namespace Game {
     const int screenWidth = 1280;
     const int screenHeight = 800;
-    
-
-    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI);
-    InitWindow(screenWidth, screenHeight, "Raylib Plane Sim");
-    rlDisableBackfaceCulling();
-    rlSetClipPlanes(0.1, 10000.0);
-    ChangeDirectory(GetApplicationDirectory());
-    
-    SetExitKey(KEY_GRAVE);
-
-    bool paused = false;
-
-    Camera camera = { 0 };
-    camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
-    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    camera.fovy = 60.0f;
-    camera.projection = CAMERA_PERSPECTIVE;
-    Vector2 camAngle {0, -.1};
-    CameraType cameraMode = CameraType::THIRD_PERSON;
-    
-    float mouseWheelMomentum = 0;
-    Vector2 mouseMomentum = {0, 0};
-
-    Model f16 = LoadModel("src/assets/plane.obj");
-    Model enemyPlane = LoadModel("src/assets/plane.obj");
-    Model f16Cockpit = LoadModel("src/assets/cockpit.obj");
-    Model map = LoadModel("src/assets/landscape.obj"); 
-    Model skybox = LoadModel("src/assets/skybox.obj");
-    
-    // Load render texture with a depth texture attached
-    RenderTexture2D target = LoadRenderTextureDepthTex(screenWidth, screenHeight);
-
-    // Load depth shader and get depth texture shader location
+    bool paused;
+    Camera camera;
+    Vector2 camAngle;
+    CameraType cameraMode;
+    float mouseWheelMomentum;
+    Vector2 mouseMomentum;
+    bool hasGotMouseInput;
+    Model f16;
+    Model enemyPlane;
+    Model f16Cockpit;
+    Model map;
+    Model skybox;
+    Plane plane;
+    Plane enemy;
+    RenderTexture2D target;
     Shader depthShader;
-    if (GLSL_VERSION == 100) depthShader = LoadShader(0, TextFormat("src/assets/depth_render_100.fs", GLSL_VERSION));
-    else if (GLSL_VERSION == 330) depthShader = LoadShader(0, TextFormat("src/assets/depth_render_330.fs", GLSL_VERSION));
-    int depthLoc = GetShaderLocation(depthShader, "depthTexture");
-    int colorLoc = GetShaderLocation(depthShader, "colorTexture");
-    
-    int flipTextureLoc = GetShaderLocation(depthShader, "flipY");
-    SetShaderValue(depthShader, flipTextureLoc, (int[]){ 1 }, SHADER_UNIFORM_INT); // Flip Y texture
-    
-    Plane plane(&f16, &f16Cockpit);
-    plane.position = {4000.0f, 300.0f, 4000.0f};
-
-    Plane enemy(&enemyPlane);
-    enemy.position = {4000.0f, 300.0f, 4100.0f};
-    enemy.front = {0.0f, 0.0f, -1.0f};
-    
-    Mesh ringAimerMesh = GenMeshTorus(0.1, 0.5, 6, 12);
-    Model ringAimer = LoadModelFromMesh(ringAimerMesh);
-
-    bool hasGotMouseInput = false;
-
-
+    int depthLoc, colorLoc;
+    Mesh ringAimerMesh;
+    Model ringAimer;
     PerlinNoise<8> PerlinMap{};
     PerlinNoise<40> PerlinMapFiner{};
     float heights [80][80] {};
-    for (int i = 0; i < 80; i += 1) {
-        for (int j = 0; j < 80; j += 1) {
-            heights[i][j] = PerlinMap.value(i*0.1, j*0.1) * 1000.0 + PerlinMapFiner.value(i, j) * 200.0;
-        }
-    }
     
-    SetTargetFPS(60);
 
-    while (!WindowShouldClose()) {
-        
+    void mainLoop() {
         if (!paused) {
             if (!IsCursorHidden() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 DisableCursor();
@@ -336,7 +290,81 @@ int main() {
             EndShaderMode();
         EndDrawing();
     }
+}
+
+using namespace Game;
+
+int main() {
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI);
+    InitWindow(screenWidth, screenHeight, "Raylib Plane Sim");
+    rlDisableBackfaceCulling();
+    rlSetClipPlanes(0.1, 10000.0);
+    ChangeDirectory(GetApplicationDirectory());
     
+    SetExitKey(KEY_GRAVE);
+
+    paused = false;
+    camera = { 0 };
+    camAngle = {0, -.1};
+    cameraMode = CameraType::THIRD_PERSON;
+    mouseWheelMomentum = 0;
+    mouseMomentum = {0, 0};
+    hasGotMouseInput = false;
+    f16 = LoadModel("src/assets/plane.obj");
+    enemyPlane = LoadModel("src/assets/plane.obj");
+    f16Cockpit = LoadModel("src/assets/cockpit.obj");
+    map = LoadModel("src/assets/landscape.obj");
+    skybox = LoadModel("src/assets/skybox.obj");
+    plane = Plane(&f16, &f16Cockpit);
+    enemy = Plane(&enemyPlane);
+    target = LoadRenderTextureDepthTex(screenWidth, screenHeight);
+    ringAimerMesh = GenMeshTorus(0.1, 0.5, 6, 12);
+    ringAimer = LoadModelFromMesh(ringAimerMesh);
+
+
+    
+    camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
+    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    camera.fovy = 60.0f;
+    camera.projection = CAMERA_PERSPECTIVE;
+    
+    // Load render texture with a depth texture attached
+    
+
+    // Load depth shader and get depth texture shader location
+    
+    if (GLSL_VERSION == 100) depthShader = LoadShader(0, TextFormat("src/assets/depth_render_100.fs", GLSL_VERSION));
+    else if (GLSL_VERSION == 330) depthShader = LoadShader(0, TextFormat("src/assets/depth_render_330.fs", GLSL_VERSION));
+    depthLoc = GetShaderLocation(depthShader, "depthTexture");
+    colorLoc = GetShaderLocation(depthShader, "colorTexture");
+    
+    int flipTextureLoc = GetShaderLocation(depthShader, "flipY");
+    SetShaderValue(depthShader, flipTextureLoc, (int[]){ 1 }, SHADER_UNIFORM_INT); // Flip Y texture
+    
+    
+    plane.position = {4000.0f, 300.0f, 4000.0f};
+
+    
+    enemy.position = {4000.0f, 300.0f, 4100.0f};
+    enemy.front = {0.0f, 0.0f, -1.0f};
+    
+    for (int i = 0; i < 80; i += 1) {
+        for (int j = 0; j < 80; j += 1) {
+            heights[i][j] = PerlinMap.value(i*0.1, j*0.1) * 1000.0 + PerlinMapFiner.value(i, j) * 200.0;
+        }
+    }
+    
+    SetTargetFPS(60);
+
+    #if defined(PLATFORM_WEB)
+        emscripten_set_main_loop(Game::mainLoop, 0, 1);
+    #endif
+    #if defined(PLATFORM_DESKTOP)
+        while (!WindowShouldClose()) {
+            Game::mainLoop();
+        }
+    #endif
+
     UnloadModel(f16);
     UnloadModel(enemyPlane);
     UnloadModel(f16Cockpit);

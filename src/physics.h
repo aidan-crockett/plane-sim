@@ -34,6 +34,7 @@ class Plane {
         position = (Vector3){ 0.0f, 20.0f, 0.0f };
     }
     Plane(Model* model): Plane(model, nullptr) {}
+    Plane(): Plane(nullptr, nullptr) {}
     
     void normalizeOrientationVectors() {
         front = Vector3Normalize(front);
