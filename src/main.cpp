@@ -26,6 +26,18 @@ enum CameraType {
     FIRST_PERSON,
 };
 
+namespace Basis {
+    Vector3 i = {1.0f, 0.0f, 0.0f};
+    Vector3 j = {0.0f, 1.0f, 0.0f};
+    Vector3 k = {0.0f, 0.0f, 1.0f};
+}
+
+enum GameState {
+    PLAYING,
+    PAUSED,
+    MENU,
+};
+
 enum AimType {
     DOT,
     RING,
@@ -40,10 +52,10 @@ float randomFloat() {
     return dis(gen);
 }
 
-void resetToZero(float& input, float step) {
-    if (std::abs(input) < step) input = 0;
-    else if (input < 0) input += step;
-    else input -= step;
+Vector3 anglesInCoordinateSystem(float xAngle, float yAngle, Vector3 xAxis, Vector3 yAxis, Vector3 zAxis, float distance=1) {
+    return Vector3Scale(Vector3Scale(xAxis, sin(xAngle)*cos(yAngle)) + 
+        Vector3Scale(yAxis, sin(yAngle)) + 
+        Vector3Scale(zAxis, cos(xAngle)*cos(yAngle)), distance);
 }
 
 //--------------------------------------------------------------------------------------
@@ -58,9 +70,10 @@ static void UnloadRenderTextureDepthTex(RenderTexture2D target);
 namespace Game {
     const int screenWidth = 1280;
     const int screenHeight = 800;
-    bool paused;
+    GameState state;
     Camera camera;
     Vector2 camAngle;
+    float cameraDistance;
     CameraType cameraMode;
     float mouseWheelMomentum;
     Vector2 mouseMomentum;
@@ -80,72 +93,99 @@ namespace Game {
     PerlinNoise<8> PerlinMap{};
     PerlinNoise<40> PerlinMapFiner{};
     float heights [80][80] {};
-    
+
+    void setup() {
+        state = GameState::PLAYING;
+        camera = Camera3D {{ 0 }};
+        camAngle = {0, -.1f};
+        cameraMode = CameraType::THIRD_PERSON;
+        mouseWheelMomentum = 0;
+        mouseMomentum = {0, 0};
+        hasGotMouseInput = false;
+        f16 = LoadModel("src/assets/plane.obj");
+        enemyPlane = LoadModel("src/assets/plane.obj");
+        f16Cockpit = LoadModel("src/assets/cockpit.obj");
+        map = LoadModel("src/assets/landscape.obj");
+        skybox = LoadModel("src/assets/skybox.obj");
+        plane = Plane(&f16, &f16Cockpit);
+        enemy = Plane(&enemyPlane);
+        target = LoadRenderTextureDepthTex(screenWidth, screenHeight);
+        ringAimerMesh = GenMeshTorus(0.1f, 0.5f, 6, 12);
+        ringAimer = LoadModelFromMesh(ringAimerMesh);
+
+
+        camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
+        camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+        camera.fovy = 60.0f;
+        camera.projection = CAMERA_PERSPECTIVE;
+        cameraDistance = 10.0f;
+        
+        plane.position = {4000.0f, 300.0f, 4000.0f};
+        
+        enemy.position = {4000.0f, 300.0f, 4500.0f};
+        enemy.front = {0.0f, 0.0f, -1.0f};
+        
+        for (int i = 0; i < 80; i += 1) {
+            for (int j = 0; j < 80; j += 1) {
+                heights[i][j] = PerlinMap.value(i*0.1f, j*0.1f) * 1000.0f + PerlinMapFiner.value(i, j) * 200.0f;
+            }
+        }
+    }
+    void cleanup() {
+        UnloadModel(f16);
+        UnloadModel(enemyPlane);
+        UnloadModel(f16Cockpit);
+        UnloadModel(map);
+        UnloadModel(skybox);
+        UnloadModel(ringAimer);
+    }
 
     void mainLoop() {
-        if (!paused) {
+        if (state == GameState::PLAYING) {
             if (!IsCursorHidden() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                 DisableCursor();
             }
 
             if (IsKeyPressed(KEY_ESCAPE)) {
-                paused = true;
+                state = GameState::PAUSED;
             }
 
             Vector2 mouseMovement = GetMouseDelta();
             
             if (hasGotMouseInput && (true || IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsCursorHidden())) {
-                mouseMomentum += mouseMovement * 0.3;
+                mouseMomentum += mouseMovement * 0.3f;
             }
-            camAngle.x += mouseMomentum.x*0.002;
-            camAngle.y -= mouseMomentum.y*0.002;
-            camAngle.y = Clamp(camAngle.y, -3.14/2, 3.14/2);
+            camAngle.x += mouseMomentum.x*0.002f;
+            camAngle.y -= mouseMomentum.y*0.002f;
+            camAngle.y = Clamp(camAngle.y, -PI/2, PI/2);
             if (!hasGotMouseInput && (mouseMovement.x != 0 || mouseMovement.y != 0)) hasGotMouseInput = true;
-            mouseMomentum *= 0.8;
+            mouseMomentum *= 0.8f;
 
-            mouseWheelMomentum += GetMouseWheelMove() * 0.02;
-            camera.fovy = Clamp(camera.fovy * (1-mouseWheelMomentum), 10, 100);
-            mouseWheelMomentum *= 0.9;
-            
-            
-            bool pitching = false, rolling = false, yawing = false;
-            float elevatorPitchRate = 0.01, aileronPitchRate = 0.015, rudderPitchRate = 0.01;
-            
+            mouseWheelMomentum += GetMouseWheelMove() * 0.03f;
+            if (cameraMode == CameraType::FIRST_PERSON) {
+                camera.fovy = Clamp(camera.fovy * (1-mouseWheelMomentum), 10, 100);
+            } else {
+                cameraDistance = Clamp(cameraDistance - mouseWheelMomentum*cameraDistance/5.0f, 4, 400);
+            }
+            mouseWheelMomentum *= 0.6f;
+                        
             if (IsKeyDown(KEY_A)) {
-                plane.rudderDeflection -= rudderPitchRate;
-                yawing = true;
-            }
-            if (IsKeyDown(KEY_D)) {
-                plane.rudderDeflection += rudderPitchRate;
-                yawing = true;
-            }
-            if (!yawing) {
-                resetToZero(plane.rudderDeflection, rudderPitchRate);
-            } else plane.rudderDeflection = Clamp(plane.rudderDeflection, -DEG2RAD*20, DEG2RAD*20);
+                plane.rudder.turn(-1);
+            } else if (IsKeyDown(KEY_D)) {
+                plane.rudder.turn(1);
+            } else plane.rudder.reset();
             
             if (IsKeyDown(KEY_S)) {
-                plane.elevatorDeflection += elevatorPitchRate;
-                pitching = true;
-            }
-            if (IsKeyDown(KEY_W)) {
-                plane.elevatorDeflection -= elevatorPitchRate;
-                pitching = true;
-            }
-            if (!pitching) {
-                resetToZero(plane.elevatorDeflection, elevatorPitchRate);
-            } else plane.elevatorDeflection = Clamp(plane.elevatorDeflection, -DEG2RAD*10, DEG2RAD*20);
+                plane.elevator.turn(1);
+            } else if (IsKeyDown(KEY_W)) {
+                plane.elevator.turn(-1);
+            } else plane.elevator.reset();
             
             if (IsKeyDown(KEY_E)) {
-                plane.aileronDeflection += aileronPitchRate;
-                rolling = true;
-            }
-            if (IsKeyDown(KEY_Q)) {
-                plane.aileronDeflection -= aileronPitchRate;
-                rolling = true;
-            } 
-            if (!rolling) {
-                resetToZero(plane.aileronDeflection, aileronPitchRate);
-            } else plane.aileronDeflection = Clamp(plane.aileronDeflection, -DEG2RAD*20, DEG2RAD*20);
+                plane.aileron.turn(1);
+            } else if (IsKeyDown(KEY_Q)) {
+                plane.aileron.turn(-1);
+            } else plane.aileron.reset();
             
             plane.update();
             enemy.attack(plane);
@@ -153,59 +193,42 @@ namespace Game {
             
             if (IsKeyPressed(KEY_C)) {
                 if (cameraMode == CameraType::THIRD_PERSON) {
-                    //cameraMode = CameraType::THIRD_PERSON_LOCKED;
-                    cameraMode = CameraType::FIRST_PERSON;
-                    camAngle = {0, 0};
-                } else if (cameraMode == CameraType::THIRD_PERSON_LOCKED) {
                     cameraMode = CameraType::FIRST_PERSON;
                     camAngle = {0, 0};
                 } else if (cameraMode == CameraType::FIRST_PERSON) {
+                    cameraMode = CameraType::THIRD_PERSON_LOCKED;
+                    camera.fovy = 60.0f;
+                    cameraDistance = 10.0f;
+                    camAngle = {-.1f, -.2f};
+                } else if (cameraMode == CameraType::THIRD_PERSON_LOCKED) {
                     cameraMode = CameraType::THIRD_PERSON;
-                }
+                    camAngle = {0, 0};
+                } 
             }
         
-            //transform matrix can be formed directly from orientation vectors as columns (orientation vectors form x, y, z axes)
-            //as opposed to using MatrixRotateXYZ from euler angles (suffers from gimbal lock)
-            
-            float cameraDistance = 10;
             
             if (cameraMode == CameraType::THIRD_PERSON) {
                 camera.target = plane.position;
-                camera.up = {0, 1.0f, 0};
-                camera.position = Vector3Add(plane.position, Vector3Scale({sin(-camAngle.x)*cos(camAngle.y), sin(camAngle.y), cos(-camAngle.x)*cos(camAngle.y)}, -cameraDistance));
+                camera.up = Basis::j;
+                camera.position = plane.position + anglesInCoordinateSystem(-camAngle.x, camAngle.y, Basis::i, Basis::j, Basis::k, -cameraDistance);
             } else if (cameraMode == CameraType::THIRD_PERSON_LOCKED) {
                 camera.target = plane.position;
-                camera.position = plane.position + Vector3Scale(
-                    Vector3Scale(plane.right(), sin(camAngle.x)*cos(camAngle.y)) + 
-                    Vector3Scale(plane.up, sin(camAngle.y)) + 
-                    Vector3Scale(plane.front, cos(camAngle.x)*cos(camAngle.y)), 
-                    -cameraDistance);
+                camAngle.y = Clamp(camAngle.y, -1.5f, 1.5f);
+                camera.position = plane.position + anglesInCoordinateSystem(camAngle.x, camAngle.y, plane.right(), plane.up, plane.front, -cameraDistance);
                 camera.up = plane.up;
             } else if (cameraMode == CameraType::FIRST_PERSON) {
-                camAngle.x = Clamp(camAngle.x, -0.95*PI, 0.95*PI);
-                camAngle.y = Clamp(camAngle.y, -.7, 1.55);
+                camAngle.x = Clamp(camAngle.x, -PI,PI);
+                camAngle.y = Clamp(camAngle.y, -.7f, 1.55f);
                 camera.up = plane.up;
-                camera.position = plane.position + Vector3Scale(plane.up, .7) + Vector3Scale(plane.front, .65);
-                camera.target = camera.position + Vector3Scale(
-                    Vector3Scale(plane.right(), sin(camAngle.x)*cos(camAngle.y)) + 
-                    Vector3Scale(plane.up, sin(camAngle.y)) + 
-                    Vector3Scale(plane.front, cos(camAngle.x)*cos(camAngle.y)), 
-                    10);
-            }
-            if (plane.elevatorDeflection != 0) {
-                Vector3 offset = Vector3Scale({randomFloat()-0.5f, randomFloat()-0.5f, randomFloat()-0.5f}, plane.elevatorDeflection * 0.03);
-                if (cameraMode == CameraType::FIRST_PERSON) {
-                    camera.position = camera.position + offset;
-                    camera.target = camera.target + offset;
-                }
-                else if (cameraMode == CameraType::THIRD_PERSON || cameraMode == CameraType::THIRD_PERSON_LOCKED) plane.position = plane.position + offset;
+                camera.position = plane.position + Vector3Scale(plane.up, .7f) + Vector3Scale(plane.front, .65f);
+                camera.target = camera.position + anglesInCoordinateSystem(camAngle.x, camAngle.y, plane.right(), plane.up, plane.front);
             }
         } else {
             if (IsCursorHidden()) {
                 EnableCursor();
             }
             if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                paused = false;
+                state = GameState::PLAYING;
             }
         }
 
@@ -213,6 +236,10 @@ namespace Game {
             ClearBackground(RAYWHITE);
 
             BeginMode3D(camera);
+                Vector3 shake = Vector3Scale({randomFloat()-0.5f, randomFloat()-0.5f, randomFloat()-0.5f}, plane.elevator.deflection * 0.03f);
+                if (cameraMode != CameraType::FIRST_PERSON) shake *= 3;
+                if (state == GameState::PLAYING) plane.position += shake;
+
                 float pipper3DDistance = 20.0f;
                 float bulletSpeed = 10.0f;
                 if (cameraMode == CameraType::FIRST_PERSON) {
@@ -228,18 +255,20 @@ namespace Game {
                     ringAimer.transform = plane.model->transform;
                     
                     
-                    if (angleToEnemy < 0.4) {
-                        DrawSphere(pipperInFront, .04, RED);
+                    if (angleToEnemy < 0.4f) {
+                        DrawSphere(pipperInFront, .04f, RED);
                         DrawModel(ringAimer, pipperWithLead, 1.0f, RED);
                     } else {
-                        DrawSphere(pipperInFront, .04, RED);
+                        DrawSphere(pipperInFront, .04f, RED);
                         DrawModel(ringAimer, pipperInFront, 1.0f, RED);
                     }
                     
-                    //DrawSphere(enemy.position + enemyLead, .4, RED);
+                    //DrawSphere(enemy.position + enemyLead, .4f, RED);
                 } else {
                     DrawModel(*plane.model, plane.position, 1.0f, WHITE);
                 }
+
+                if (state == GameState::PLAYING) plane.position -= shake;
 
                 DrawModel(*enemy.model, enemy.position, 1.0f, WHITE);
                 
@@ -252,19 +281,17 @@ namespace Game {
                     for (int j = 0; j < 80; ++j) {
                         rlBegin(RL_QUADS);
                             if (heights[i][j] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i][j]+100, 255, 0, 255); // Green
-                            rlVertex3f(i*0.1*scale, heights[i][j], j*0.1*scale);   // Top vertex
+                            rlVertex3f(i*0.1f*scale, heights[i][j], j*0.1f*scale);   // Top vertex
                             
                             if (heights[i][j+1] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i][j+1]+100, 255, 0, 255); // Green
-                            rlVertex3f(i*0.1*scale, heights[i][j+1], (j+1)*0.1*scale); // Bottom-left vertex
+                            rlVertex3f(i*0.1f*scale, heights[i][j+1], (j+1)*0.1f*scale); // Bottom-left vertex
 
                             if (heights[i+1][j+1] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i+1][j+1]+100, 255, 0, 255); // Green
-                            rlVertex3f((i+1)*0.1*scale, heights[i+1][j+1], (j+1)*0.1*scale);   // Top vertex
+                            rlVertex3f((i+1)*0.1f*scale, heights[i+1][j+1], (j+1)*0.1f*scale);   // Top vertex
                             
                             if (heights[i+1][j] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i+1][j]+100, 255, 0, 255); // Green
-                            rlVertex3f((i+1)*0.1*scale, heights[i+1][j], (j)*0.1*scale);
+                            rlVertex3f((i+1)*0.1f*scale, heights[i+1][j], (j)*0.1f*scale);
                         rlEnd();
-
-                        
                     }
                 }//*/
                 
@@ -277,7 +304,7 @@ namespace Game {
             
             BeginMode3D(camera);
                 rlDisableDepthMask();
-                DrawModel(skybox, plane.position, 1.0f, WHITE); //skybox is independent of depth buffer and is regarded as "behind" everything else
+                DrawModel(skybox, camera.position, 1.0f, WHITE); //skybox is independent of depth buffer and is regarded as "behind" everything else
                 rlEnableDepthMask();
                 
             EndMode3D();
@@ -289,6 +316,10 @@ namespace Game {
                 DrawTexture(target.texture, 0, 0, WHITE);
             EndShaderMode();
         EndDrawing();
+        if (IsKeyPressed(KEY_R)) {
+            cleanup();
+            setup();
+        }
     }
 }
 
@@ -298,39 +329,9 @@ int main() {
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI);
     InitWindow(screenWidth, screenHeight, "Raylib Plane Sim");
     rlDisableBackfaceCulling();
-    rlSetClipPlanes(0.1, 10000.0);
+    rlSetClipPlanes(0.1f, 10000.0f);
     ChangeDirectory(GetApplicationDirectory());
-    
-    SetExitKey(KEY_GRAVE);
-
-    paused = false;
-    camera = { 0 };
-    camAngle = {0, -.1};
-    cameraMode = CameraType::THIRD_PERSON;
-    mouseWheelMomentum = 0;
-    mouseMomentum = {0, 0};
-    hasGotMouseInput = false;
-    f16 = LoadModel("src/assets/plane.obj");
-    enemyPlane = LoadModel("src/assets/plane.obj");
-    f16Cockpit = LoadModel("src/assets/cockpit.obj");
-    map = LoadModel("src/assets/landscape.obj");
-    skybox = LoadModel("src/assets/skybox.obj");
-    plane = Plane(&f16, &f16Cockpit);
-    enemy = Plane(&enemyPlane);
-    target = LoadRenderTextureDepthTex(screenWidth, screenHeight);
-    ringAimerMesh = GenMeshTorus(0.1, 0.5, 6, 12);
-    ringAimer = LoadModelFromMesh(ringAimerMesh);
-
-
-    
-    camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
-    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
-    camera.fovy = 60.0f;
-    camera.projection = CAMERA_PERSPECTIVE;
-    
     // Load render texture with a depth texture attached
-    
-
     // Load depth shader and get depth texture shader location
     
     if (GLSL_VERSION == 100) depthShader = LoadShader(0, TextFormat("src/assets/depth_render_100.fs", GLSL_VERSION));
@@ -341,20 +342,10 @@ int main() {
     int flipTextureLoc = GetShaderLocation(depthShader, "flipY");
     SetShaderValue(depthShader, flipTextureLoc, (int[]){ 1 }, SHADER_UNIFORM_INT); // Flip Y texture
     
-    
-    plane.position = {4000.0f, 300.0f, 4000.0f};
-
-    
-    enemy.position = {4000.0f, 300.0f, 4100.0f};
-    enemy.front = {0.0f, 0.0f, -1.0f};
-    
-    for (int i = 0; i < 80; i += 1) {
-        for (int j = 0; j < 80; j += 1) {
-            heights[i][j] = PerlinMap.value(i*0.1, j*0.1) * 1000.0 + PerlinMapFiner.value(i, j) * 200.0;
-        }
-    }
-    
+    SetExitKey(KEY_GRAVE);
     SetTargetFPS(60);
+
+    Game::setup();
 
     #if defined(PLATFORM_WEB)
         emscripten_set_main_loop(Game::mainLoop, 0, 1);
@@ -365,12 +356,7 @@ int main() {
         }
     #endif
 
-    UnloadModel(f16);
-    UnloadModel(enemyPlane);
-    UnloadModel(f16Cockpit);
-    UnloadModel(map);
-    UnloadModel(skybox);
-    UnloadModel(ringAimer);
+    Game::cleanup();
     
     UnloadRenderTextureDepthTex(target);
     UnloadShader(depthShader);      // Unload shader

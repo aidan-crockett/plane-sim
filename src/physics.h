@@ -17,6 +17,26 @@ Vector3 rotateVectorAroundAxis(const Vector3& vector, Vector3 axis, double radia
     return resultant;
 }
 
+void resetToZero(float& input, float step) {
+    if (std::abs(input) < step) input = 0;
+    else if (input < 0) input += step;
+    else input -= step;
+}
+
+class ControlSurface {
+    public: 
+    float deflection = 0.0f;
+    float maxDeflection = 0.0f;
+    ControlSurface(float max): maxDeflection(max) {}
+    void turn(float direction) {
+        deflection += maxDeflection/35.0f * static_cast<float>(direction);
+        deflection = Clamp(deflection, -maxDeflection, maxDeflection);
+    }
+    void reset() {
+        resetToZero(deflection, maxDeflection/35.0f);
+    }
+};
+
 class Plane {
     public:
     Vector3 position;
@@ -25,10 +45,11 @@ class Plane {
     Vector3 up {0, 1, 0};
     Model* model;
     Model* cockpitModel;
-    float elevatorDeflection = 0;
-    float aileronDeflection = 0; 
-    float rudderDeflection = 0;
-    
+
+    ControlSurface elevator {DEG2RAD*20.0f};
+    ControlSurface aileron {DEG2RAD*240.0f};
+    ControlSurface rudder {DEG2RAD*9.0f};
+
     Plane(Model* model, Model* cockpitModel): model(model), cockpitModel(cockpitModel) {
         velocity = {0, 0, 1.0f};
         position = (Vector3){ 0.0f, 20.0f, 0.0f };
@@ -43,9 +64,13 @@ class Plane {
     void update() {
         velocity = Vector3Scale(front, Vector3Length(velocity));
         position = position + velocity;
-        pitch(elevatorDeflection * 0.02);
-        roll(aileronDeflection * .2);
-        yaw(rudderDeflection * 0.0075);
+
+        pitch(elevator.deflection / 60.0f);
+        roll(aileron.deflection / 60.0f);
+        yaw(rudder.deflection / 60.0f);
+
+        //transform matrix can be formed directly from orientation vectors as columns (orientation vectors form x, y, z axes)
+        //as opposed to using MatrixRotateXYZ from euler angles (suffers from gimbal lock)
 
         model->transform = {
             right().x, up.x, front.x, 0.0f,
@@ -56,19 +81,19 @@ class Plane {
         if (cockpitModel) cockpitModel->transform = model->transform;
     }
     void attack(const Plane& target) {
-        float rollSpeed = 0.06, pitchSpeed = DEG2RAD*20*0.02;
+        float rollSpeed = 0.06f, pitchSpeed = DEG2RAD*16.0f/60.0f;
         Vector3 relative = target.position - position;
         float angleToTarget = Vector3Angle(relative, front);
-        if (angleToTarget < 0.01) return;
+        if (angleToTarget < 0.01f) return;
         float targetAngleToSelf = Vector3Angle(Vector3Negate(relative), target.front);
         float horizontal = Vector3DotProduct(relative, right());
         float vertical = Vector3DotProduct(relative, up);
         float forward = Vector3DotProduct(relative, front);
-        float horizontalAngle = atan2(vertical, horizontal);
+        float horizontalAngle = atan2(horizontal, vertical);
         float verticalAngle = atan2(vertical, forward);
-        if ((abs(verticalAngle) < PI*0.75 && targetAngleToSelf > angleToTarget / 5.0) || Vector3Length(relative) < Vector3Length(target.velocity)*20.0) { //check that he isnt on our 6 to engage in 1 circle, otherwise we ditch out to 2 circle and try again
-            if (abs(horizontalAngle-PI/2.0) <= rollSpeed) { //is our front-vertical plane aligned with him to where we can start pitching towards him
-                roll(horizontalAngle-PI/2.0);
+        if ((abs(angleToTarget) < PI*0.85f && targetAngleToSelf > angleToTarget / 5.0f) || Vector3Length(relative) < Vector3Length(target.velocity)*60.0f) { //check that he isnt on our 6 to engage in 1 circle, otherwise we ditch out to 2 circle and try again
+            if (abs(horizontalAngle) <= rollSpeed) { //is our front-vertical plane aligned with him to where we can start pitching towards him
+                roll(horizontalAngle);
                 pitch(std::min(verticalAngle, pitchSpeed));
             } else {
                 if (horizontal > 0) {//roll towards him without pitching
@@ -107,7 +132,7 @@ class PerlinNoise {
         std::random_device rd;
         std::mt19937 gen(rd());
         
-        std::uniform_real_distribution<float> dis(0.0f, 2.0*PI);
+        std::uniform_real_distribution<float> dis(0.0f, 2.0f*PI);
         
         for (int i = 0; i < N; ++i) {
             GVA.push_back(std::vector<Vector2>{});
@@ -127,7 +152,7 @@ class PerlinNoise {
         float bottomRightInfluence = Vector2DotProduct(GVA[bottom][right], {x-1.0f, y-1.0f});
         float topInfluence = Lerp(topLeftInfluence, topRightInfluence, x);
         float bottomInfluence = Lerp(bottomLeftInfluence, bottomRightInfluence, x);
-        float finalValue = Lerp(topInfluence, bottomInfluence, y) * sqrt(2.0);
+        float finalValue = Lerp(topInfluence, bottomInfluence, y) * sqrt(2.0f);
         return finalValue;
     }
 };

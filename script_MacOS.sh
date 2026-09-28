@@ -17,4 +17,5 @@ em++ -o game.html src/main.cpp -Os -Wall ./raylibsrc/libraylib.a -I ./raylibsrc 
 
 #written according to https://github.com/raysan5/raylib/wiki/Working-for-Web-(HTML5)
 
-python3 -m http.server 3000
+#python3 -m http.server 3000
+./RLPlaneSim
