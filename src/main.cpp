@@ -4,6 +4,7 @@
 #include "rcamera.h"
 
 #include "physics.h"
+#include "menu.h"
 
 #include <random>
 #include <iostream>
@@ -58,13 +59,11 @@ Vector3 anglesInCoordinateSystem(float xAngle, float yAngle, Vector3 xAxis, Vect
         Vector3Scale(zAxis, cos(xAngle)*cos(yAngle)), distance);
 }
 
-//--------------------------------------------------------------------------------------
-// Module Functions Declaration
-//--------------------------------------------------------------------------------------
-// Load custom render texture with depth texture attached
+
+// Load custom render texture with depth texture attached (from raylib docs, depth shader)
 static RenderTexture2D LoadRenderTextureDepthTex(int width, int height);
 
-// Unload render texture from GPU memory (VRAM)
+// Unload render texture from GPU memory (VRAM) (from raylib docs)
 static void UnloadRenderTextureDepthTex(RenderTexture2D target);
 
 namespace Game {
@@ -94,8 +93,10 @@ namespace Game {
     PerlinNoise<40> PerlinMapFiner{};
     float heights [80][80] {};
 
+    std::vector<Button> menuButtons {};
+    Button playButton{};
+
     void setup() {
-        state = GameState::PLAYING;
         camera = Camera3D {{ 0 }};
         camAngle = {0, -.1f};
         cameraMode = CameraType::THIRD_PERSON;
@@ -113,7 +114,6 @@ namespace Game {
         ringAimerMesh = GenMeshTorus(0.1f, 0.5f, 6, 12);
         ringAimer = LoadModelFromMesh(ringAimerMesh);
 
-
         camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
         camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
         camera.fovy = 60.0f;
@@ -130,6 +130,14 @@ namespace Game {
                 heights[i][j] = PerlinMap.value(i*0.1f, j*0.1f) * 1000.0f + PerlinMapFiner.value(i, j) * 200.0f;
             }
         }
+
+        playButton = Button(screenWidth/2, screenHeight/2, 200, 100, "Deploy!");
+        playButton.action = [] () {
+            state = GameState::PLAYING;
+        };
+        menuButtons = {playButton};
+
+        if (IsCursorHidden()) EnableCursor();
     }
     void cleanup() {
         UnloadModel(f16);
@@ -141,211 +149,227 @@ namespace Game {
     }
 
     void mainLoop() {
-        if (state == GameState::PLAYING) {
-            if (!IsCursorHidden() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                DisableCursor();
-            }
-
-            if (IsKeyPressed(KEY_ESCAPE)) {
-                state = GameState::PAUSED;
-            }
-
-            Vector2 mouseMovement = GetMouseDelta();
-            
-            if (hasGotMouseInput && (true || IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsCursorHidden())) {
-                mouseMomentum += mouseMovement * 0.3f;
-            }
-            camAngle.x += mouseMomentum.x*0.002f;
-            camAngle.y -= mouseMomentum.y*0.002f;
-            camAngle.y = Clamp(camAngle.y, -PI/2, PI/2);
-            if (!hasGotMouseInput && (mouseMovement.x != 0 || mouseMovement.y != 0)) hasGotMouseInput = true;
-            mouseMomentum *= 0.8f;
-
-            mouseWheelMomentum += GetMouseWheelMove() * 0.03f;
-            if (cameraMode == CameraType::FIRST_PERSON) {
-                camera.fovy = Clamp(camera.fovy * (1-mouseWheelMomentum), 10, 100);
-            } else {
-                cameraDistance = Clamp(cameraDistance - mouseWheelMomentum*cameraDistance/5.0f, 4, 400);
-            }
-            mouseWheelMomentum *= 0.6f;
-                        
-            if (IsKeyDown(KEY_A)) {
-                plane.rudder.turn(-1);
-            } else if (IsKeyDown(KEY_D)) {
-                plane.rudder.turn(1);
-            } else plane.rudder.reset();
-            
-            if (IsKeyDown(KEY_S)) {
-                plane.elevator.turn(1);
-            } else if (IsKeyDown(KEY_W)) {
-                plane.elevator.turn(-1);
-            } else plane.elevator.reset();
-            
-            if (IsKeyDown(KEY_E)) {
-                plane.aileron.turn(1);
-            } else if (IsKeyDown(KEY_Q)) {
-                plane.aileron.turn(-1);
-            } else plane.aileron.reset();
-            
-            plane.update();
-            enemy.attack(plane);
-            enemy.update();
-            
-            if (IsKeyPressed(KEY_C)) {
-                if (cameraMode == CameraType::THIRD_PERSON) {
-                    cameraMode = CameraType::FIRST_PERSON;
-                    camAngle = {0, 0};
-                } else if (cameraMode == CameraType::FIRST_PERSON) {
-                    cameraMode = CameraType::THIRD_PERSON_LOCKED;
-                    camera.fovy = 60.0f;
-                    cameraDistance = 10.0f;
-                    camAngle = {-.1f, -.2f};
-                } else if (cameraMode == CameraType::THIRD_PERSON_LOCKED) {
-                    cameraMode = CameraType::THIRD_PERSON;
-                    camAngle = {0, 0};
-                } 
-            }
-        
-            
-            if (cameraMode == CameraType::THIRD_PERSON) {
-                camera.target = plane.position;
-                camera.up = Basis::j;
-                camera.position = plane.position + anglesInCoordinateSystem(-camAngle.x, camAngle.y, Basis::i, Basis::j, Basis::k, -cameraDistance);
-            } else if (cameraMode == CameraType::THIRD_PERSON_LOCKED) {
-                camera.target = plane.position;
-                camAngle.y = Clamp(camAngle.y, -1.5f, 1.5f);
-                camera.position = plane.position + anglesInCoordinateSystem(camAngle.x, camAngle.y, plane.right(), plane.up, plane.front, -cameraDistance);
-                camera.up = plane.up;
-            } else if (cameraMode == CameraType::FIRST_PERSON) {
-                camAngle.x = Clamp(camAngle.x, -PI,PI);
-                camAngle.y = Clamp(camAngle.y, -.7f, 1.55f);
-                camera.up = plane.up;
-                camera.position = plane.position + Vector3Scale(plane.up, .7f) + Vector3Scale(plane.front, .65f);
-                camera.target = camera.position + anglesInCoordinateSystem(camAngle.x, camAngle.y, plane.right(), plane.up, plane.front);
-            }
-        } else {
-            if (IsCursorHidden()) {
-                EnableCursor();
-            }
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                state = GameState::PLAYING;
-            }
-        }
-
-        BeginTextureMode(target); //writing to depth/color texture buffer first
-            ClearBackground(RAYWHITE);
-
-            BeginMode3D(camera);
-                Vector3 shake = Vector3Scale({randomFloat()-0.5f, randomFloat()-0.5f, randomFloat()-0.5f}, plane.elevator.deflection * 0.03f);
-                if (cameraMode != CameraType::FIRST_PERSON) shake *= 3;
-                if (state == GameState::PLAYING) plane.position += shake;
-
-                float pipper3DDistance = 20.0f;
-                float bulletSpeed = 10.0f;
-                if (cameraMode == CameraType::FIRST_PERSON) {
-                    DrawModel(*plane.cockpitModel, plane.position, 1.0f, WHITE);
-                    
-                    float distanceToEnemy = Vector3Length(enemy.position-plane.position);
-                    float angleToEnemy = Vector3Angle(enemy.position-plane.position, plane.front);
-                    
-                    Vector3 enemyLead = leadAngleCalculation(enemy.position-plane.position, enemy.velocity, bulletSpeed);
-                    Vector3 pipperInFront = camera.position + Vector3Scale(plane.front, pipper3DDistance);
-                    Vector3 pipperWithLead = pipperInFront - enemyLead*pipper3DDistance/distanceToEnemy;
-                    
-                    ringAimer.transform = plane.model->transform;
-                    
-                    
-                    if (angleToEnemy < 0.4f) {
-                        DrawSphere(pipperInFront, .04f, RED);
-                        DrawModel(ringAimer, pipperWithLead, 1.0f, RED);
-                    } else {
-                        DrawSphere(pipperInFront, .04f, RED);
-                        DrawModel(ringAimer, pipperInFront, 1.0f, RED);
-                    }
-                    
-                    //DrawSphere(enemy.position + enemyLead, .4f, RED);
-                } else {
-                    DrawModel(*plane.model, plane.position, 1.0f, WHITE);
+        if (state == GameState::PAUSED || state == GameState::PLAYING) {
+            SetMouseCursor(MOUSE_CURSOR_CROSSHAIR);
+            if (state == GameState::PLAYING) {
+                if (!IsCursorHidden() && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    DisableCursor();
                 }
 
-                if (state == GameState::PLAYING) plane.position -= shake;
+                if (IsKeyPressed(KEY_ESCAPE)) {
+                    state = GameState::PAUSED;
+                }
 
-                DrawModel(*enemy.model, enemy.position, 1.0f, WHITE);
+                Vector2 mouseMovement = GetMouseDelta();
                 
-                
-                //DrawModel(map, {0, 0, 0}, 1.0f, WHITE);
+                if (hasGotMouseInput && (true || IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsCursorHidden())) {
+                    mouseMomentum += mouseMovement * 0.3f;
+                }
+                camAngle.x += mouseMomentum.x*0.002f;
+                camAngle.y -= mouseMomentum.y*0.002f;
+                camAngle.y = Clamp(camAngle.y, -PI/2, PI/2);
+                if (!hasGotMouseInput && (mouseMovement.x != 0 || mouseMovement.y != 0)) hasGotMouseInput = true;
+                mouseMomentum *= 0.8f;
 
-                float scale = 1000.0f;
-
-                for (int i = 0; i < 79; ++i) {
-                    for (int j = 0; j < 80; ++j) {
-                        rlBegin(RL_QUADS);
-                            if (heights[i][j] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i][j]+100, 255, 0, 255); // Green
-                            rlVertex3f(i*0.1f*scale, heights[i][j], j*0.1f*scale);   // Top vertex
+                mouseWheelMomentum += GetMouseWheelMove() * 0.03f;
+                if (cameraMode == CameraType::FIRST_PERSON) {
+                    camera.fovy = Clamp(camera.fovy * (1-mouseWheelMomentum), 10, 100);
+                } else {
+                    cameraDistance = Clamp(cameraDistance - mouseWheelMomentum*cameraDistance/5.0f, 4, 400);
+                }
+                mouseWheelMomentum *= 0.6f;
                             
-                            if (heights[i][j+1] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i][j+1]+100, 255, 0, 255); // Green
-                            rlVertex3f(i*0.1f*scale, heights[i][j+1], (j+1)*0.1f*scale); // Bottom-left vertex
-
-                            if (heights[i+1][j+1] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i+1][j+1]+100, 255, 0, 255); // Green
-                            rlVertex3f((i+1)*0.1f*scale, heights[i+1][j+1], (j+1)*0.1f*scale);   // Top vertex
-                            
-                            if (heights[i+1][j] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i+1][j]+100, 255, 0, 255); // Green
-                            rlVertex3f((i+1)*0.1f*scale, heights[i+1][j], (j)*0.1f*scale);
-                        rlEnd();
-                    }
-                }//*/
+                if (IsKeyDown(KEY_A)) {
+                    plane.rudder.turn(-1);
+                } else if (IsKeyDown(KEY_D)) {
+                    plane.rudder.turn(1);
+                } else plane.rudder.reset();
                 
-            EndMode3D();
-        EndTextureMode();
-
-        // Draw into screen using depth/color texture buffer 
-        BeginDrawing();
-            ClearBackground(RAYWHITE);
+                if (IsKeyDown(KEY_S)) {
+                    plane.elevator.turn(1);
+                } else if (IsKeyDown(KEY_W)) {
+                    plane.elevator.turn(-1);
+                } else plane.elevator.reset();
+                
+                if (IsKeyDown(KEY_E)) {
+                    plane.aileron.turn(1);
+                } else if (IsKeyDown(KEY_Q)) {
+                    plane.aileron.turn(-1);
+                } else plane.aileron.reset();
+                
+                plane.update();
+                enemy.attack(plane);
+                enemy.update();
+                
+                if (IsKeyPressed(KEY_C)) {
+                    if (cameraMode == CameraType::THIRD_PERSON) {
+                        cameraMode = CameraType::FIRST_PERSON;
+                        camAngle = {0, 0};
+                    } else if (cameraMode == CameraType::FIRST_PERSON) {
+                        cameraMode = CameraType::THIRD_PERSON_LOCKED;
+                        camera.fovy = 60.0f;
+                        cameraDistance = 10.0f;
+                        camAngle = {-.1f, -.2f};
+                    } else if (cameraMode == CameraType::THIRD_PERSON_LOCKED) {
+                        cameraMode = CameraType::THIRD_PERSON;
+                        camAngle = {0, 0};
+                    } 
+                }
             
-            BeginMode3D(camera);
-                rlDisableDepthMask();
-                DrawModel(skybox, camera.position, 1.0f, WHITE); //skybox is independent of depth buffer and is regarded as "behind" everything else
-                rlEnableDepthMask();
                 
-            EndMode3D();
+                if (cameraMode == CameraType::THIRD_PERSON) {
+                    camera.target = plane.position;
+                    camera.up = Basis::j;
+                    camera.position = plane.position + anglesInCoordinateSystem(-camAngle.x, camAngle.y, Basis::i, Basis::j, Basis::k, -cameraDistance);
+                } else if (cameraMode == CameraType::THIRD_PERSON_LOCKED) {
+                    camera.target = plane.position;
+                    camAngle.y = Clamp(camAngle.y, -1.5f, 1.5f);
+                    camera.position = plane.position + anglesInCoordinateSystem(camAngle.x, camAngle.y, plane.right(), plane.up, plane.front, -cameraDistance);
+                    camera.up = plane.up;
+                } else if (cameraMode == CameraType::FIRST_PERSON) {
+                    camAngle.x = Clamp(camAngle.x, -PI,PI);
+                    camAngle.y = Clamp(camAngle.y, -.7f, 1.55f);
+                    camera.up = plane.up;
+                    camera.position = plane.position + Vector3Scale(plane.up, .7f) + Vector3Scale(plane.front, .65f);
+                    camera.target = camera.position + anglesInCoordinateSystem(camAngle.x, camAngle.y, plane.right(), plane.up, plane.front);
+                }
+            } else {
+                if (IsCursorHidden()) {
+                    EnableCursor();
+                }
+                if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                    state = GameState::PLAYING;
+                }
+            }
 
-            BeginShaderMode(depthShader);
-                SetShaderValueTexture(depthShader, colorLoc, target.texture); //send color buffer to shader
-                SetShaderValueTexture(depthShader, depthLoc, target.depth); //send depth buffer to shader
+            BeginTextureMode(target); //writing to depth/color texture buffer first
+                ClearBackground(RAYWHITE);
+
+                BeginMode3D(camera);
+                    Vector3 shake = Vector3Scale({randomFloat()-0.5f, randomFloat()-0.5f, randomFloat()-0.5f}, plane.elevator.deflection * 0.03f);
+                    if (cameraMode != CameraType::FIRST_PERSON) shake *= 3;
+                    if (state == GameState::PLAYING) plane.position += shake;
+
+                    float pipper3DDistance = 20.0f;
+                    float bulletSpeed = 10.0f;
+                    if (cameraMode == CameraType::FIRST_PERSON) {
+                        DrawModel(*plane.cockpitModel, plane.position, 1.0f, WHITE);
+                        
+                        float distanceToEnemy = Vector3Length(enemy.position-plane.position);
+                        float angleToEnemy = Vector3Angle(enemy.position-plane.position, plane.front);
+                        
+                        Vector3 enemyLead = leadAngleCalculation(enemy.position-plane.position, enemy.velocity, bulletSpeed);
+                        Vector3 pipperInFront = camera.position + Vector3Scale(plane.front, pipper3DDistance);
+                        Vector3 pipperWithLead = pipperInFront - enemyLead*pipper3DDistance/distanceToEnemy;
+                        
+                        ringAimer.transform = plane.model->transform;
+                        
+                        
+                        if (angleToEnemy < 0.4f) {
+                            DrawSphere(pipperInFront, .04f, RED);
+                            DrawModel(ringAimer, pipperWithLead, 1.0f, RED);
+                        } else {
+                            DrawSphere(pipperInFront, .04f, RED);
+                            DrawModel(ringAimer, pipperInFront, 1.0f, RED);
+                        }
+                        
+                        //DrawSphere(enemy.position + enemyLead, .4f, RED);
+                    } else {
+                        DrawModel(*plane.model, plane.position, 1.0f, WHITE);
+                    }
+
+                    if (state == GameState::PLAYING) plane.position -= shake;
+
+                    DrawModel(*enemy.model, enemy.position, 1.0f, WHITE);
+                    
+                    
+                    //DrawModel(map, {0, 0, 0}, 1.0f, WHITE);
+
+                    float scale = 1000.0f;
+
+                    for (int i = 0; i < 79; ++i) {
+                        for (int j = 0; j < 80; ++j) {
+                            rlBegin(RL_QUADS);
+                                if (heights[i][j] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i][j]+100, 255, 0, 255); // Green
+                                rlVertex3f(i*0.1f*scale, heights[i][j], j*0.1f*scale);   // Top vertex
+                                
+                                if (heights[i][j+1] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i][j+1]+100, 255, 0, 255); // Green
+                                rlVertex3f(i*0.1f*scale, heights[i][j+1], (j+1)*0.1f*scale); // Bottom-left vertex
+
+                                if (heights[i+1][j+1] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i+1][j+1]+100, 255, 0, 255); // Green
+                                rlVertex3f((i+1)*0.1f*scale, heights[i+1][j+1], (j+1)*0.1f*scale);   // Top vertex
+                                
+                                if (heights[i+1][j] > 30) rlColor4ub(255, 255, 255, 255); else rlColor4ub(heights[i+1][j]+100, 255, 0, 255); // Green
+                                rlVertex3f((i+1)*0.1f*scale, heights[i+1][j], (j)*0.1f*scale);
+                            rlEnd();
+                        }
+                    }//*/
+                    
+                EndMode3D();
+            EndTextureMode();
+
+            // Draw into screen using depth/color texture buffer 
+            BeginDrawing();
+                ClearBackground(RAYWHITE);
                 
-                DrawTexture(target.texture, 0, 0, WHITE);
-            EndShaderMode();
-        EndDrawing();
-        if (IsKeyPressed(KEY_R)) {
-            cleanup();
-            setup();
+                BeginMode3D(camera);
+                    rlDisableDepthMask();
+                    DrawModel(skybox, camera.position, 1.0f, WHITE); //skybox is independent of depth buffer and is regarded as "behind" everything else
+                    rlEnableDepthMask();
+                    
+                EndMode3D();
+
+                BeginShaderMode(depthShader);
+                    SetShaderValueTexture(depthShader, colorLoc, target.texture); //send color buffer to shader
+                    SetShaderValueTexture(depthShader, depthLoc, target.depth); //send depth buffer to shader
+                    
+                    DrawTexture(target.texture, 0, 0, WHITE);
+                EndShaderMode();
+            EndDrawing();
+            if (IsKeyPressed(KEY_R)) {
+                cleanup();
+                setup();
+            }
+            if (IsKeyPressed(KEY_M)) {
+                state = GameState::MENU;
+                cleanup();
+                setup();
+            }
+        } else if (state == GameState::MENU) {
+            BeginDrawing();
+                ClearBackground(RAYWHITE);
+                
+                SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+                for (const Button& button: menuButtons) {
+                    button.render(GetMousePosition());
+                }
+            EndDrawing();
         }
     }
 }
 
-using namespace Game;
-
 int main() {
     SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_HIGHDPI);
-    InitWindow(screenWidth, screenHeight, "Raylib Plane Sim");
+    InitWindow(Game::screenWidth, Game::screenHeight, "Raylib Plane Sim");
     rlDisableBackfaceCulling();
     rlSetClipPlanes(0.1f, 10000.0f);
     ChangeDirectory(GetApplicationDirectory());
     // Load render texture with a depth texture attached
     // Load depth shader and get depth texture shader location
     
-    if (GLSL_VERSION == 100) depthShader = LoadShader(0, TextFormat("src/assets/depth_render_100.fs", GLSL_VERSION));
-    else if (GLSL_VERSION == 330) depthShader = LoadShader(0, TextFormat("src/assets/depth_render_330.fs", GLSL_VERSION));
-    depthLoc = GetShaderLocation(depthShader, "depthTexture");
-    colorLoc = GetShaderLocation(depthShader, "colorTexture");
+    if (GLSL_VERSION == 100) Game::depthShader = LoadShader(0, TextFormat("src/assets/depth_render_100.fs", GLSL_VERSION));
+    else if (GLSL_VERSION == 330) Game::depthShader = LoadShader(0, TextFormat("src/assets/depth_render_330.fs", GLSL_VERSION));
+    Game::depthLoc = GetShaderLocation(Game::depthShader, "depthTexture");
+    Game::colorLoc = GetShaderLocation(Game::depthShader, "colorTexture");
     
-    int flipTextureLoc = GetShaderLocation(depthShader, "flipY");
-    SetShaderValue(depthShader, flipTextureLoc, (int[]){ 1 }, SHADER_UNIFORM_INT); // Flip Y texture
+    int flipTextureLoc = GetShaderLocation(Game::depthShader, "flipY");
+    SetShaderValue(Game::depthShader, flipTextureLoc, (int[]){ 1 }, SHADER_UNIFORM_INT); // Flip Y texture
     
     SetExitKey(KEY_GRAVE);
     SetTargetFPS(60);
 
     Game::setup();
+    Game::state = GameState::MENU;
 
     #if defined(PLATFORM_WEB)
         emscripten_set_main_loop(Game::mainLoop, 0, 1);
@@ -358,8 +382,8 @@ int main() {
 
     Game::cleanup();
     
-    UnloadRenderTextureDepthTex(target);
-    UnloadShader(depthShader);      // Unload shader
+    UnloadRenderTextureDepthTex(Game::target);
+    UnloadShader(Game::depthShader);      // Unload shader
 
     CloseWindow();
     
@@ -367,10 +391,7 @@ int main() {
 }
 
 
-//--------------------------------------------------------------------------------------
-// Module Functions Definition
-//--------------------------------------------------------------------------------------
-// Load custom render texture, create a writable depth texture buffer
+// Load custom render texture, create a writable depth texture buffer (from raylib docs, depth shader)
 static RenderTexture2D LoadRenderTextureDepthTex(int width, int height)
 {
     RenderTexture2D target = { 0 };
