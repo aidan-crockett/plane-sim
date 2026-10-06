@@ -6,3 +6,4 @@ main
 .DS_STORE
 */.DS_STORE
 build/ 
+main.code-workspace

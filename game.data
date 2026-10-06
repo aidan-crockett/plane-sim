@@ -2373,103 +2373,7 @@ f 488/609/344 490/611/344 489/610/344
 f 490/611/345 483/616/345 485/612/345
 f 487/608/346 489/610/346 485/613/346
 f 486/615/347 483/617/347 490/611/347
-//taken from the depth rendering example from raylib
-//some modifications make it work on macOS (in instead of varying, out vec4 FragColor instead of default gl_FragColor, texture instead of texture2D)
-
-#version 100 //important to enable the aforementioned language features
-
-precision mediump float;
-
-// pixel coordinate
-varying vec2 fragTexCoord;
-
-// Input uniform (global) values (supplied via `SetShaderValue` and `SetShaderValueTexture` in main.cpp)
-uniform sampler2D depthTexture;
-uniform sampler2D colorTexture;
-uniform bool flipY;
-
-float nearPlane = 0.1;
-float farPlane = 10000.0;
-
-void main() {
-    // Handle potential Y-flipping
-    vec2 texCoord = fragTexCoord;
-    if (flipY) texCoord.y = 1.0 - texCoord.y;
-
-    // Sample depth texture
-    float depth = texture2D(depthTexture, texCoord).r;
-    // Sample color texture 
-    vec4 color = texture2D(colorTexture, texCoord);
-
-    // Linearize depth
-    float linearDepth = (2.0*nearPlane)/(farPlane + nearPlane - depth*(farPlane - nearPlane));
-    
-    // Output final color (original from raylib example code)
-    //gl_FragColor = vec4(vec3(linearDepth), 1.0);
-    
-    //float colorMultiplier = max(linearDepth*-0.15+1.0, 0.5);
-    //gl_FragColor = vec4(color.r*colorMultiplier, color.g*colorMultiplier, color.b*colorMultiplier, max(1.0-linearDepth/10.0, 0.3)); //fog effect :D
-    
-    //max(linearDepth*-0.15+1.0, 0.5);
-    if (linearDepth >= 1.0) { //no polygons in this direction so we set alpha=0 and later render the skybox instead
-        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
-    } else {
-        //farther pixels are darker
-        float colorMultiplier = sqrt(linearDepth)*-0.6+1.0;//sqrt(linearDepth)*.5+.6;
-        colorMultiplier = clamp(colorMultiplier, 0.4, 1.0);
-        gl_FragColor = vec4(color.rgb*colorMultiplier, 1.0);
-    }
-    
-}//taken from the depth rendering example from raylib
-//some modifications make it work on macOS (in instead of varying, out vec4 FragColor instead of default gl_FragColor, texture instead of texture2D)
-
-#version 330 //important to enable the aforementioned language features
-
-precision mediump float;
-
-// pixel coordinate
-in vec2 fragTexCoord;
-
-// Input uniform (global) values (supplied via `SetShaderValue` and `SetShaderValueTexture` in main.cpp)
-uniform sampler2D depthTexture;
-uniform sampler2D colorTexture;
-uniform bool flipY;
-
-float nearPlane = 0.1;
-float farPlane = 10000.0;
-
-out vec4 FragColor; //instead of gl_FragColor (same purpose)
-
-void main() {
-    // Handle potential Y-flipping
-    vec2 texCoord = fragTexCoord;
-    if (flipY) texCoord.y = 1.0 - texCoord.y;
-
-    // Sample depth texture
-    float depth = texture(depthTexture, texCoord).r;
-    // Sample color texture 
-    vec4 color = texture(colorTexture, texCoord);
-
-    // Linearize depth
-    float linearDepth = (2.0*nearPlane)/(farPlane + nearPlane - depth*(farPlane - nearPlane));
-    
-    // Output final color (original from raylib example code)
-    //gl_FragColor = vec4(vec3(linearDepth), 1.0);
-    
-    //float colorMultiplier = max(linearDepth*-0.15+1.0, 0.5);
-    //gl_FragColor = vec4(color.r*colorMultiplier, color.g*colorMultiplier, color.b*colorMultiplier, max(1.0-linearDepth/10.0, 0.3)); //fog effect :D
-    
-    //max(linearDepth*-0.15+1.0, 0.5);
-    if (linearDepth >= 1.0) { //no polygons in this direction so we set alpha=0 and later render the skybox instead
-        FragColor = vec4(0.0, 0.0, 0.0, 0.0);
-    } else {
-        //farther pixels are darker
-        float colorMultiplier = sqrt(linearDepth)*-0.6+1.0;//sqrt(linearDepth)*.5+.6;
-        colorMultiplier = clamp(colorMultiplier, 0.4, 1.0);
-        FragColor = vec4(color.rgb*colorMultiplier, 1.0);
-    }
-    
-}‰PNG
+‰PNG
 
    IHDR  à  à   ÕŞÂ	   IDATx¤½»&Éq¥w"k ?$iI»ÀÒ“°„›·a€„%Âí×=İ=ŞÀƒ$–nµZÿÏ„ûeè=‘™õÕ½İàêyT]'ODdddDfV}Õlßıîïæ¿û{ùØ÷ş ¯ÿó™¼=oığy÷‘÷äË¿/_»ö`¾yã#ùã§?‘?}î3ùóçÿ4qçù‹¾”¿xéËùËW¾’¿xå«ù‹W¿š?7^ƒ_ûJşìÕ¯äO_ırşÄ@ÿüÆ+–¯¾ü¥|ñ¥Ïç>—·î~&Ÿ½û©|úÎ'ò©ÛË'ŸÿH^»õø`^»ù|<uëùôóÌgÁsà&ºq¾uëƒùüóæíÛåÛÎ»·?>–/ÜşD¾xû“ùÒíOçË·?>›¯<ÿ'ùÊÍÏåËÏÂÏ|6_}ú³ùxã©Ïæ›ğOù\şìÙÏçÏŸûBşòÖ—òoîüYşİ_Í_½üù«W¿¿zıùwo|#ÿüâ¯çÏ_ÿZşìµ¯Qç_äO^ùóüÑK_É7ï~%ß¸ıå|ãÖŸåëÏg¿”¯=õ…|åÉÏçË×?—/=ñ™|ññOå}ç£äûÈ‡òî£±=HÿCø}(_ºöaÆ|4_¹ññ|ù©OæËO*_~æ3ùò³ŸÍ—Ÿû\¾òÜç‘/äKÏ~!_|úóùâSš/€o|._|\ÿâ|†xŸÎ—˜÷åÇˆóè'òåG>>š/=üá|ñ‡åİ~0ŸÿÁûó¹¼7Ÿşş{òÆŞ•×9×~G>ñÈ;òñGß‘=O¼3¿ö®|üú»ó‰'ß“OÜøã×²Œí)pƒ~píÆ»òÚ“Æ;ó‰ëï oÏÇŸøÃ|ô±?È>ò{ùıüN~ç{¿•ßşÎ[óëù¯ó+ßüßò‹_ÿWù§ñ¿æg¿ò?ç§Á§¾ü¿ä§¾ò¿äg¾ú¯òs_ûßóß|k~å/;¿ş×ùıwæ÷yo>úøƒyãÉåÍg>/Üú|¾vç+ù£¿–?ù[ù·¯}'ÿİ›ßËüñóŸúHş_?{4ÿıOGòŸ°ıã¾—ÿÆ_ç¯^û«üÛW¾•¿|ùëù³¿š?½ûåüñİ/æî~½ı\¾ùÂŸä/~6_éÓùÚ‹ŸÊW^üx¾ôâÇò…?šw_üHŞ~áCyóÎCùìóéç?7n½?¯ß|o^{îó‰çŞ“O<ûî|ìéwæ£O½#¹ñö|äúåÃ¬ÅÃ¬ÅÃşA>òğæ#?üÃ|øû”|şï½#ıî;óÑ¿ßeÍ¿÷î|œıyü0{ôØ#Ø{g>~Ü Ï¼#»ùö|ôÖå#ÏçÎäÃw?ø‚ñ{ùı»¿›ß»ı;ù×·~+ÿÏgÿmşÕSoË¿¼ñ¶üöõ·å·®'Şšß|ì­ùGÁ#oË¯?
 {[~íñ·å_<ñ¶ü*øÊµ·æ—ñÿ³'ßš_zòßä—zk~ñ©3ñVô·åŸ=ıoó+ÏüVşù3¿“_{æwóëÏü~~óé?Ìo?ıGùWÔırıî“ïÎï_{O>üø{óÑÇŞ›?ò¾¼öğûóIğôÃÈçy0Ÿô¡¼ıØCùÂãq?”¯^ÿp¾~ã#<¯Í=ûÑüñMÀ{ãGÏ?”oÜş`¾zç}ùÒwç;ïÈ[ÔşÌßÍ'ïüV>qçmùØ“Üù×ùğÿ#x{âyô[oÍ‡o‚çŞ–<óoó‘§‹½ù­|ôÉßÎG¯ÿN>vıwóñë¿—O\ÿı¼öäïçõO>õ‡yƒzn<?ûGyã¦ñvöûíùÔóïÈ·ß™OŞ~W^‡¯=ÿÎ|ùy¼'ÍO ?q÷İùÄİwåµŞ•×_|W>ùxù]yã€§‘ŸÆşıÏ¼ğî|–qÏ>ß|w>÷Ü{òæ³àéwçMµ›×ß•Ïñl>Çy0½şÎ|†gî©'É	<yãyıéwå“œÃ'9—OŞ|90ŸºõP>}ó#ùìÍç­›ŸÎÛÏıIŞå]øâÓ_Ì—n|)_¹şgùÚõ/ç×¿’o‚ŸÜàı~ãËù³§¾”?æ‹ùKŞ™{ëùw·?Ÿ¿ºó§ù÷wÏå?ğÿ™ÿ´p÷³ùOÆÏæ?òğ÷w>ÿüíOå/î|2úü'òÍç?–¯²·/=÷á¼ıì‡òæ3å3O=˜Oİø`Ş¸ş|òÚûóÉ'ŞŸ7x_>¹ö¾|öÚ{ó¹kœ7¯ïÉ›¼›n>ùÇùÜ÷äs¼—O?õŞ|ê)ÆÜx?ü xˆ˜Ê7>”O=yÆÓ×?”Ï¢?‡ıùÎ»O}$_~öcùúÍOæOÿlş’úşİK_Êæ÷ïÿæ7à?óÛğŸ_ÿfş—×¾™ÿéÕoæäıñï_ø‹ü‡Ûü~ÜüRşâ™ÏçOnüI¾yíÓùúãŸÌWûDáµÇ?‘¯=ñÉ|íÚ¯^ÿD¾ríãùâµå'>’79ÿ7xûŞ{òßyg~ç¯ş(¿ıíßÏo|ëwó/¾ù;ùçßøíüê7;¿ò­ßÎ¯òNüóïün~ßô¯ÿ Ÿ‡Á£ßxüóOüÑÀµ·ç7¯½#¿¾}íùW×Ş•}íİùÖíÑ'ß›×YŸgygàıùâÍ÷ç«¼ÃŞ¸ışüÑí÷åOn¿7zçógwßSø	ü#ÎãëàåÛïÎ»wŞ“·ÁM|OŞşã|üù?Î‡o½'pó=ù½çŞß}î]ùİgß•ß{æ]ù}ÎâŸzW>òÔ»ó‰§ß“O=ûŞ¼Éœwù­åÎ‡òÍ>š?{éãù7/2õÊ§ó^ı“üç×>Ÿÿáõ/æ|ıËùŸùŞø¯¬ÿ{õùß^ùfşwŞİÿıåoç{ñ/ÿõî_æ¹ûíüO·¿•ÿáùoæ??ÿü‡[_Ë_İúóüåÍ¯æÏo}%zûËÔöÅ|íÎçóå»ŸË^ø,ïñOåó/}2o¾ô‰¼ùòÇóæ+àÕçó¯}<ï¼şÉ|ñÍOå+?úl¾ş“?Íÿôù³ŸıYşÍ/Øë_üEşı/¿ÿôËoæ?ÿò[ùÏ¿øvşóÏÁÏ¾ÿøÓoæßÿäù«-ùæŸçÏŞür¾ùÆóÕ×ş4_xõ³ùüËŸÊg©õÉ»É'n?”>÷üáÓïÍïq¿Ëoîw{{şõ£à‘·ç÷áò{üöÇy^Çï©çŞŸÏò=tëî‡ó6¿Gw^úXŞ%÷uÜ%ö~«n³¦ÏßùhŞzşÃyóÖ‡Xï[7?œÏƒÛ7?’wûH¾ğÜGó¥ç>–¯İüD¾yóSùã[ŸÎŸÈ?yçàÙOäOg>™?}æù“§?‘?~êcùæ“Í7Œëğµæëòk×?–¯‚—é{	¼xã£ùÂÓÍ»àÎÓÉ;Ï|8ï<ûá¼ËóşÂ³å‹Ï>È3÷`¾òÌƒù*x¼ñôƒùÆÓå¼^¿ñ`¾vı¡|õÚCù²xN^xôÁ¼óğóùï o}ïyó»Àü½æ­ïƒ>˜·ıPŞyüÃù9½DÎ¯<÷é|íÖgóõ;’oÜ¼³Şà]eùuŞQ¯İşL¾úü§ó•›Ÿ$ŸçKÏ|4_"ß—Á+O8_oûıHş”5ûùÍåßÜúXşí­çß=ÿñüÛÂÇò·>š?emß|îCù*µ½øÌ²q)Zš„¬-Th¡Ä”!=RÁêõç”—¹[ÏÑŸøĞ‹Ñ‰$ÂÉL#B–^œúäé~_›û<¦¸¯qï6"£UÛªE‹PC†$šˆ(t®ÀL5ªX¹&YzD&ÛX5ùr(³ãUx”ˆPÄ|È®l0ëqìbŒ$‹¸R¸{ŞÇù«Ÿ&"ğ½h’BaØ×<Ñàûa;Ø-oÑ¨% ì¾©Aä	)$#EÊ–Í2¶ ¯±èÓ175=ÀØˆs™C›Th¬ÕÍùSïJĞO''Ø°|„}’qÜD:Üäáıtvö}¢WÜ®~Ñå˜§ÓàèÏu>f»çKYZh!±ı
@@ -38698,6 +38602,106 @@ f 2913/5382/5998 2632/4361/5999 2626/4348/6000
 f 2626/4348/6000 2632/4361/5999 2631/4360/6001
 f 2632/4361/6002 2613/4322/6002 2622/4339/6002
 l 1513 2917
+#version 100
+
+precision mediump float;
+
+varying vec3 fragPosition;
+varying vec2 fragTexCoord;
+varying vec4 fragColor;
+varying vec3 fragNormal;
+
+uniform vec4 colDiffuse;
+
+uniform sampler2D texture0;
+
+float nearPlane = 0.1;
+float farPlane = 10000.0;
+
+void main() {
+    float depth = (2.0*nearPlane)/(farPlane + nearPlane - gl_FragCoord.z*(farPlane - nearPlane)); //linearize z depth
+    gl_FragColor = vec4(
+        vec3(colDiffuse*fragColor) //initial fragment color
+        * (dot(normalize(fragNormal), normalize(vec3(0.0, 1.0, 0.0)))*1.0) //lighting
+        * (1.0-depth/1.0), //depth shading
+    1.0);
+}
+#version 100
+
+// Raylib standard attributes
+attribute vec3 vertexPosition;
+attribute vec2 vertexTexCoord;
+attribute vec3 vertexNormal;
+attribute vec4 vertexColor;
+
+// Raylib standard uniforms
+uniform mat4 mvp;
+uniform mat4 matModel;
+uniform mat4 matNormal;
+
+varying vec3 fragPosition;
+varying vec2 fragTexCoord;
+varying vec4 fragColor;
+varying vec3 fragNormal;
+
+void main() {
+    fragPosition = vec3(matModel * vec4(vertexPosition, 1.0));
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+    fragNormal = normalize(vec3(matNormal * vec4(vertexNormal, 0.0)));
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
+#version 330
+
+precision mediump float;
+
+in vec3 fragPosition;
+in vec2 fragTexCoord;
+in vec4 fragColor;
+in vec3 fragNormal;
+
+uniform vec4 colDiffuse;
+
+out vec4 glFragColor;
+
+uniform sampler2D texture0;
+
+float nearPlane = 0.1;
+float farPlane = 10000.0;
+
+void main() {
+    float depth = (2.0*nearPlane)/(farPlane + nearPlane - gl_FragCoord.z*(farPlane - nearPlane)); //linearize z depth
+    glFragColor = vec4(
+        vec3(colDiffuse*fragColor) //initial fragment color
+        * (dot(normalize(fragNormal), normalize(vec3(0.0, 1.0, 0.0)))*1.0) //lighting
+        * (1.0-depth/1.0), //depth shading
+    1.0);
+}
+#version 330
+
+// Raylib standard attributes
+in vec3 vertexPosition;
+in vec2 vertexTexCoord;
+in vec3 vertexNormal;
+in vec4 vertexColor;
+
+// Raylib standard uniforms
+uniform mat4 mvp;
+uniform mat4 matModel;
+uniform mat4 matNormal;
+
+out vec3 fragPosition;
+out vec2 fragTexCoord;
+out vec4 fragColor;
+out vec3 fragNormal;
+
+void main() {
+    fragPosition = vec3(matModel * vec4(vertexPosition, 1.0));
+    fragTexCoord = vertexTexCoord;
+    fragColor = vertexColor;
+    fragNormal = normalize(vec3(matNormal * vec4(vertexNormal, 0.0)));
+    gl_Position = mvp * vec4(vertexPosition, 1.0);
+}
 # Blender 4.1.1 MTL File: 'None'
 # www.blender.org
 
