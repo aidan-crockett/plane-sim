@@ -85,7 +85,6 @@ namespace Game {
     PerlinNoise<8> PerlinMap{};
     PerlinNoise<gridSize> PerlinMapFiner{};
     float heights [gridSize][gridSize] {};
-    std::array<int, 3> colors [gridSize][gridSize] {};
     Mesh generatedMesh = {};
     Model genMap;
 
@@ -120,6 +119,17 @@ namespace Game {
         enemy.position = {4000.0f, 300.0f, 4500.0f};
         enemy.front = {0.0f, 0.0f, -1.0f};
 
+        if (generatedMesh.vaoId > 0) {
+            if (genMap.meshMaterial != nullptr) {
+                MemFree(genMap.meshMaterial);
+                genMap.meshMaterial = nullptr;
+            }
+            
+            UnloadModel(genMap);
+            generatedMesh = {0};
+            genMap = {{0}};
+        }
+
         generatedMesh.triangleCount = gridSize*gridSize*2;
         generatedMesh.vertexCount = generatedMesh.triangleCount*3;
         generatedMesh.vertices = (float *)MemAlloc(generatedMesh.vertexCount*3*sizeof(float)); 
@@ -129,8 +139,6 @@ namespace Game {
         for (int i = 0; i < gridSize; i += 1) {
             for (int j = 0; j < gridSize; j += 1) {
                 heights[i][j] = PerlinMap.value(i*0.1f, j*0.1f) * 1000.0f + PerlinMapFiner.value(i, j) * 200.0f;
-                float colorMult = -randomFloat();
-                colors[i][j] = {static_cast<int>(std::round(9.83f*colorMult)), static_cast<int>(std::round(15.7f*colorMult)), static_cast<int>(std::round(20.0f*colorMult))};
             }
         }
 
@@ -139,16 +147,21 @@ namespace Game {
         int index = 0;
         for (int i = 0; i < gridSize-1; ++i) {
             for (int j = 0; j < gridSize-1; ++j) {
-                for (const std::pair<int, int> pair: std::vector<std::pair<int, int>>{/*first triangle in quad*/{i, j}, {i, j+1}, {i+1, j+1}, /*second triangle in quad*/{i, j}, {i+1, j+1}, {i+1, j}}) {
+                for (const auto& pair: std::array<std::pair<int, int>, 6>{{
+                    {i, j}, {i, j+1}, {i+1, j+1}, //first triangle in quad
+                    {i, j}, {i+1, j+1}, {i+1, j}}} //second triangle in quad
+                ) {
                     int x = pair.first, y = pair.second;
-                    std::array<int, 3> colorMod = colors[x][y];
-                    std::array<int, 3> color = {static_cast<int>(std::floor(heights[x][y]))+100, 255, 20};
-                    if (heights[x][y] > 30.0f) color = {255, 255, 255};
                     
-                    generatedMesh.colors[index*4 + 0] = color[0];
-                    generatedMesh.colors[index*4 + 1] = color[1];
-                    generatedMesh.colors[index*4 + 2] = color[2];
+                    generatedMesh.colors[index*4 + 0] = (std::floor(heights[x][y]))+100;
+                    generatedMesh.colors[index*4 + 1] = 255;
+                    generatedMesh.colors[index*4 + 2] = 20;
                     generatedMesh.colors[index*4 + 3] = 255;
+                    if (heights[x][y] > 30.0f) {
+                        generatedMesh.colors[index*4 + 0] = 255;
+                        generatedMesh.colors[index*4 + 1] = 255;
+                        generatedMesh.colors[index*4 + 2] = 255;
+                    }
                     generatedMesh.vertices[index*3 + 0] = x*scale;
                     generatedMesh.vertices[index*3 + 1] = heights[x][y];
                     generatedMesh.vertices[index*3 + 2] = y*scale;
@@ -157,6 +170,7 @@ namespace Game {
                     generatedMesh.normals[index*3 + 2] = 0.0f;
 
                     ++index;
+                    if (randomFloat() < 0.01f) std::cout << i;
                 }
             }
         }
@@ -164,6 +178,7 @@ namespace Game {
 
         UploadMesh(&generatedMesh, false);
         genMap = LoadModelFromMesh(generatedMesh);
+        genMap.materials[0].shader = depthShader;
 
         playButton = Button(screenWidth/2, screenHeight/2, 200, 100, "Deploy!");
         playButton.action = [] () {
@@ -181,6 +196,8 @@ namespace Game {
         UnloadModel(skybox);
         UnloadModel(ringAimer);
         UnloadModel(genMap);
+        generatedMesh = {0};
+        
     }
 
     void renderGame() {
@@ -324,12 +341,7 @@ namespace Game {
                     camera.position = plane.position + Vector3Scale(plane.up, .7f) + Vector3Scale(plane.front, .65f);
                     camera.target = camera.position + anglesInCoordinateSystem(camAngle.x, camAngle.y, plane.right(), plane.up, plane.front);
                 }
-                if (IsKeyPressed(KEY_R)) {
-                    std::cout << "Keypress r" << std::endl;
-                    cleanup();
-                    setup();
-                } else if (IsKeyPressed(KEY_M)) {
-                    std::cout << "Keypress m" << std::endl;
+                if (IsKeyPressed(KEY_M)) {
                     EnableCursor();
                     state = GameState::MENU;
                     cleanup();
@@ -344,10 +356,7 @@ namespace Game {
                 if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
                     state = GameState::PLAYING;
                 }
-                if (IsKeyPressed(KEY_R)) {
-                    cleanup();
-                    setup();
-                } else if (IsKeyPressed(KEY_M)) {
+                if (IsKeyPressed(KEY_M)) {
                     EnableCursor();
                     state = GameState::MENU;
                     cleanup();
@@ -394,9 +403,6 @@ int main() {
 
     Game::setup();
     Game::state = GameState::MENU;
-
-    Game::genMap.materials[0].shader = Game::depthShader;
-
 
     #if defined(PLATFORM_WEB)
         emscripten_set_main_loop(Game::mainLoop, 0, 1);

@@ -6,7 +6,9 @@ clang++ src/*.cpp -o RLPlaneSim \
   -framework IOKit \
   -framework Cocoa \
   -framework GLUT \
-  -framework OpenGL
+  -framework OpenGL 
+  -fsanitize=address 
+  -g
 
 #open RLPlaneSim
 ./RLPlaneSim
